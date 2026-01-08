@@ -1,0 +1,19 @@
+{
+  "printers": [
+    {
+      "name": "My Bambu P1S",
+      "ip": "192.168.1.100",
+      "serial": "00M00A000000000",
+      "model": "P1S"
+    },
+    {
+      "name": "Workshop X1C",
+      "ip": "192.168.1.101",
+      "serial": "00M00A000000001",
+      "model": "X1C"
+    }
+  ],
+  "target_ip": "127.0.0.1",
+  "target_port": 2021,
+  "interval": 5
+}

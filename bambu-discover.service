@@ -1,0 +1,13 @@
+[Unit]
+Description=Bambu Printer LAN Discovery Service
+Documentation=https://github.com/JRGgernaut/bambu-lan-discover
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/bambu-discover --daemon
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

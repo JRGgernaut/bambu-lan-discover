@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+"""
+Bambu Printer Discovery Injector
+
+Sends SSDP discovery packets to make LAN-only Bambu Lab printers
+appear in Bambu Studio / OrcaSlicer without cloud connectivity.
+
+https://github.com/JRGgernaut/bambu-lan-discover
+"""
+
+import socket
+import argparse
+import sys
+import time
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+
+# Default config location
+CONFIG_PATH = Path.home() / ".config" / "bambu-discover" / "config.json"
+
+# Printer model codes
+MODELS = {
+    "X1C": "3DPrinter-X1-Carbon",
+    "X1": "BL-P002",
+    "X1E": "C13",
+    "P1P": "C11",
+    "P1S": "C12",
+    "P2S": "N7",
+    "A1": "N2S",
+    "A1-Mini": "N1",
+    "H2D": "O1D",
+    "H2S": "O1S",
+    "H2C": "O1C",
+}
+
+DEFAULT_CONFIG = {
+    "printers": [
+        {
+            "name": "My Bambu Printer",
+            "ip": "192.168.1.100",
+            "serial": "YOUR_SERIAL_NUMBER",
+            "model": "P1S"
+        }
+    ],
+    "target_ip": "127.0.0.1",
+    "target_port": 2021,
+    "interval": 5
+}
+
+
+def build_ssdp_packet(printer: dict) -> str:
+    """Build an SSDP discovery response packet."""
+    model_code = MODELS.get(printer["model"], printer["model"])
+
+    return (
+        f"HTTP/1.1 200 OK\r\n"
+        f"Server: Buildroot/2018.02-rc3 UPnP/1.0 ssdpd/1.8\r\n"
+        f"Date: {datetime.now()}\r\n"
+        f"Location: {printer['ip']}\r\n"
+        f"ST: urn:bambulab-com:device:3dprinter:1\r\n"
+        f"EXT:\r\n"
+        f"USN: {printer['serial']}\r\n"
+        f"Cache-Control: max-age=1800\r\n"
+        f"DevModel.bambu.com: {model_code}\r\n"
+        f"DevName.bambu.com: {printer['name']}\r\n"
+        f"DevSignal.bambu.com: -44\r\n"
+        f"DevConnect.bambu.com: lan\r\n"
+        f"DevBind.bambu.com: free\r\n\r\n"
+    )
+
+
+def send_discovery(printer: dict, target_ip: str, target_port: int, verbose: bool = False) -> bool:
+    """Send SSDP discovery packet for a printer."""
+    try:
+        packet = build_ssdp_packet(printer)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.sendto(packet.encode(), (target_ip, target_port))
+        if verbose:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Sent discovery for {printer['name']} ({printer['ip']})")
+        return True
+    except Exception as e:
+        print(f"Error sending discovery for {printer['name']}: {e}", file=sys.stderr)
+        return False
+
+
+def load_config(config_path: Path) -> dict:
+    """Load configuration from JSON file."""
+    if not config_path.exists():
+        return None
+    with open(config_path) as f:
+        return json.load(f)
+
+
+def save_config(config: dict, config_path: Path):
+    """Save configuration to JSON file."""
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+    print(f"Configuration saved to {config_path}")
+
+
+def init_config(args):
+    """Initialize a new configuration file."""
+    config = DEFAULT_CONFIG.copy()
+
+    if args.ip:
+        config["printers"][0]["ip"] = args.ip
+    if args.serial:
+        config["printers"][0]["serial"] = args.serial
+    if args.model:
+        config["printers"][0]["model"] = args.model
+    if args.name:
+        config["printers"][0]["name"] = args.name
+
+    save_config(config, CONFIG_PATH)
+    print(f"\nEdit the config file to add your printer details:")
+    print(f"  nano {CONFIG_PATH}")
+
+
+def run_daemon(config: dict, verbose: bool = False):
+    """Run continuous discovery loop."""
+    target_ip = config.get("target_ip", "127.0.0.1")
+    target_port = config.get("target_port", 2021)
+    interval = config.get("interval", 5)
+
+    print(f"Starting Bambu discovery daemon (interval: {interval}s)")
+    print(f"Sending to {target_ip}:{target_port}")
+    print(f"Printers: {', '.join(p['name'] for p in config['printers'])}")
+    print("Press Ctrl+C to stop\n")
+
+    try:
+        while True:
+            for printer in config["printers"]:
+                send_discovery(printer, target_ip, target_port, verbose)
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        print("\nStopped.")
+
+
+def run_once(config: dict):
+    """Send discovery packets once."""
+    target_ip = config.get("target_ip", "127.0.0.1")
+    target_port = config.get("target_port", 2021)
+
+    for printer in config["printers"]:
+        if send_discovery(printer, target_ip, target_port, verbose=True):
+            print(f"  -> {printer['name']} announced to Bambu Studio")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Make LAN-only Bambu printers appear in Bambu Studio",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  bambu-discover --init --ip 192.168.1.100 --serial ABC123 --model P1S
+  bambu-discover --daemon
+  bambu-discover --once
+  bambu-discover --daemon --verbose
+
+Supported models: X1C, X1, X1E, P1P, P1S, P2S, A1, A1-Mini, H2D
+        """
+    )
+
+    parser.add_argument("--init", action="store_true", help="Create initial config file")
+    parser.add_argument("--daemon", "-d", action="store_true", help="Run continuously in background")
+    parser.add_argument("--once", "-1", action="store_true", help="Send discovery once and exit")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Print each discovery sent")
+    parser.add_argument("--config", "-c", type=Path, default=CONFIG_PATH, help="Config file path")
+
+    # Quick setup options
+    parser.add_argument("--ip", help="Printer IP address")
+    parser.add_argument("--serial", help="Printer serial number")
+    parser.add_argument("--model", choices=list(MODELS.keys()), help="Printer model")
+    parser.add_argument("--name", help="Printer display name")
+
+    args = parser.parse_args()
+
+    # Initialize config
+    if args.init:
+        init_config(args)
+        return
+
+    # Load config
+    config = load_config(args.config)
+
+    # Override with CLI args if provided
+    if config is None:
+        if args.ip and args.serial:
+            config = {
+                "printers": [{
+                    "name": args.name or "Bambu Printer",
+                    "ip": args.ip,
+                    "serial": args.serial,
+                    "model": args.model or "P1S"
+                }],
+                "target_ip": "127.0.0.1",
+                "target_port": 2021,
+                "interval": 5
+            }
+        else:
+            print(f"No config found at {args.config}")
+            print("Run with --init to create one, or provide --ip and --serial")
+            sys.exit(1)
+
+    # Run mode
+    if args.daemon:
+        run_daemon(config, args.verbose)
+    elif args.once:
+        run_once(config)
+    else:
+        # Default: run once
+        run_once(config)
+
+
+if __name__ == "__main__":
+    main()
