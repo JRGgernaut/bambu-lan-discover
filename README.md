@@ -30,6 +30,9 @@ This tool sends SSDP discovery packets directly to Bambu Studio's listening port
 | A1 | A1 |
 | A1 Mini | A1-Mini |
 | H2D | H2D |
+| H2D Pro | H2D-Pro |
+| H2S | H2S |
+| H2C | H2C |
 
 ## Installation
 

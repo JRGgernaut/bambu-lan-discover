@@ -22,7 +22,7 @@ CONFIG_PATH = Path.home() / ".config" / "bambu-discover" / "config.json"
 
 # Printer model codes
 MODELS = {
-    "X1C": "3DPrinter-X1-Carbon",
+    "X1C": "BL-P001",
     "X1": "BL-P002",
     "X1E": "C13",
     "P1P": "C11",
@@ -31,6 +31,7 @@ MODELS = {
     "A1": "N2S",
     "A1-Mini": "N1",
     "H2D": "O1D",
+    "H2D-Pro": "O1E",
     "H2S": "O1S",
     "H2C": "O1C",
 }
@@ -160,7 +161,7 @@ Examples:
   bambu-discover --once
   bambu-discover --daemon --verbose
 
-Supported models: X1C, X1, X1E, P1P, P1S, P2S, A1, A1-Mini, H2D
+Supported models: X1C, X1, X1E, P1P, P1S, P2S, A1, A1-Mini, H2D, H2D-Pro, H2S, H2C
         """
     )
 
